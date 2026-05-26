@@ -12,14 +12,18 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	"github.com/go-chi/httprate"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yourusername/table-night/internal/auth"
-	"github.com/yourusername/table-night/internal/config"
-	"github.com/yourusername/table-night/internal/db"
-	"github.com/yourusername/table-night/internal/handlers"
-	"github.com/yourusername/table-night/internal/middleware"
-	"github.com/yourusername/table-night/internal/respond"
+	dbfiles "github.com/lfry610/table-knight/db"
+	"github.com/lfry610/table-knight/internal/auth"
+	"github.com/lfry610/table-knight/internal/config"
+	"github.com/lfry610/table-knight/internal/db"
+	"github.com/lfry610/table-knight/internal/handlers"
+	"github.com/lfry610/table-knight/internal/middleware"
+	"github.com/lfry610/table-knight/internal/migrate"
+	"github.com/lfry610/table-knight/internal/respond"
 )
 
 func main() {
@@ -47,6 +51,11 @@ func main() {
 	}
 	slog.Info("database connected")
 
+	if err := migrate.Run(ctx, pool, dbfiles.Migrations); err != nil {
+		slog.Error("migrations failed", "error", err)
+		os.Exit(1)
+	}
+
 	queries := db.New(pool)
 
 	// ── Services ──────────────────────────────────────────────────────────────
@@ -54,9 +63,14 @@ func main() {
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	authHandler := handlers.NewAuthHandler(queries, authSvc)
-	gamesHandler := handlers.NewGamesHandler(queries, cfg.BGGAPIBaseURL)
+	gamesHandler := handlers.NewGamesHandler(queries, cfg.BGGAPIBaseURL, cfg.BGGAPIToken)
 	groupsHandler := handlers.NewGroupsHandler(queries)
 	sessionsHandler := handlers.NewSessionsHandler(queries)
+	roundTableHandler := handlers.NewRoundTableHandler(queries, gamesHandler)
+	socialHandler := handlers.NewSocialHandler(queries)
+	listsHandler := handlers.NewListsHandler(queries, pool, cfg.BGGAPIBaseURL, cfg.BGGAPIToken)
+	reviewsHandler := handlers.NewReviewsHandler(queries)
+	oauthHandler := handlers.NewOAuthHandler(queries, authSvc, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL, cfg.FrontendURL)
 
 	// ── Router ────────────────────────────────────────────────────────────────
 	r := chi.NewRouter()
@@ -66,34 +80,23 @@ func main() {
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Timeout(30 * time.Second))
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			origin := cfg.AllowedOrigin
-			if origin == "" && !cfg.IsProd() {
-				origin = "*"
-			}
-			if origin != "" {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-			}
-			if req.Method == http.MethodOptions {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-			next.ServeHTTP(w, req)
-		})
-	})
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins: cfg.AllowedOrigins(),
+		AllowedMethods: []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders: []string{"Authorization", "Content-Type"},
+		MaxAge:         300,
+	}))
 
 	// Health check (used by ECS and ALB)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		respond.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	// Public routes
-	r.Post("/auth/register", authHandler.Register)
-	r.Post("/auth/login", authHandler.Login)
+	// Public routes — auth endpoints are rate limited per IP
+	r.With(httprate.LimitByIP(10, time.Minute)).Post("/auth/register", authHandler.Register)
+	r.With(httprate.LimitByIP(10, time.Minute)).Post("/auth/login", authHandler.Login)
+	r.Get("/auth/google", oauthHandler.Redirect)
+	r.Get("/auth/google/callback", oauthHandler.Callback)
 
 	// Game search (public — no auth needed to browse)
 	r.Get("/games/search", gamesHandler.SearchGames)
@@ -102,11 +105,36 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Authenticate(authSvc))
 
+		// Games
+		r.Get("/games/{bggId}", gamesHandler.GetGameDetail)
+
+		// Reviews
+		r.Get("/me/reviews", reviewsHandler.GetMyReviews)
+		r.Get("/me/reviewable-games", reviewsHandler.GetReviewableGames)
+		r.Post("/reviews", reviewsHandler.UpsertReview)
+		r.Delete("/reviews/{gameId}", reviewsHandler.DeleteReview)
+
 		// Me
+		r.Get("/me", authHandler.GetMe)
+			r.Patch("/me", authHandler.UpdateMe)
 		r.Get("/me/collection", gamesHandler.GetMyCollection)
 		r.Post("/me/collection", gamesHandler.AddToCollection)
 		r.Patch("/me/collection/{gameID}", gamesHandler.UpdateCollectionEntry)
+		r.Delete("/me/collection/{gameID}", gamesHandler.RemoveFromCollection)
 		r.Get("/me/groups", groupsHandler.GetMyGroups)
+		r.Get("/me/sessions", sessionsHandler.GetMySessions)
+		r.Get("/me/stats", sessionsHandler.GetMyStats)
+		r.Get("/me/round-table", roundTableHandler.GetRoundTable)
+		r.Put("/me/round-table", roundTableHandler.SetRoundTable)
+		r.Get("/me/feed", socialHandler.GetFeed)
+		r.Get("/me/following", socialHandler.GetFollowing)
+		r.Get("/me/group-mates", socialHandler.GetGroupMates)
+
+		// Users
+		r.Get("/users/search", socialHandler.SearchUsers)
+		r.Get("/users/{id}", socialHandler.GetUserProfile)
+		r.Post("/users/{id}/follow", socialHandler.Follow)
+		r.Delete("/users/{id}/follow", socialHandler.Unfollow)
 
 		// Groups
 		r.Post("/groups", groupsHandler.CreateGroup)
@@ -115,8 +143,22 @@ func main() {
 		r.Get("/groups/{id}/collection", groupsHandler.GetGroupCollection)
 		r.Get("/groups/{id}/sessions", sessionsHandler.GetGroupSessions)
 
+		// Lists
+		r.Post("/lists", listsHandler.CreateList)
+		r.Get("/me/lists", listsHandler.GetMyLists)
+		r.Get("/lists/{id}", listsHandler.GetList)
+		r.Patch("/lists/{id}", listsHandler.UpdateList)
+		r.Delete("/lists/{id}", listsHandler.DeleteList)
+		r.Post("/lists/{id}/games", listsHandler.AddGame)
+		r.Delete("/lists/{id}/games/{gameID}", listsHandler.RemoveGame)
+		r.Put("/lists/{id}/reorder", listsHandler.ReorderGames)
+
 		// Sessions
 		r.Post("/sessions", sessionsHandler.CreateSession)
+		r.Patch("/sessions/{id}", sessionsHandler.UpdateSession)
+		r.Delete("/sessions/{id}", sessionsHandler.DeleteSession)
+		r.Patch("/sessions/{id}/players", sessionsHandler.UpdateSessionPlayers)
+		r.Get("/sessions/{id}/players", sessionsHandler.GetSessionPlayers)
 	})
 
 	// ── Server ────────────────────────────────────────────────────────────────

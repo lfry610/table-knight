@@ -4,29 +4,33 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/yourusername/table-night/internal/db"
-	"github.com/yourusername/table-night/internal/middleware"
-	"github.com/yourusername/table-night/internal/respond"
+	"github.com/lfry610/table-knight/internal/db"
+	"github.com/lfry610/table-knight/internal/middleware"
+	"github.com/lfry610/table-knight/internal/respond"
 )
 
 type GamesHandler struct {
-	queries    *db.Queries
-	bggBaseURL string
-	httpClient *http.Client
+	queries      *db.Queries
+	bggBaseURL   string
+	bggAPIToken  string
+	httpClient   *http.Client
 }
 
-func NewGamesHandler(q *db.Queries, bggBaseURL string) *GamesHandler {
+func NewGamesHandler(q *db.Queries, bggBaseURL, bggAPIToken string) *GamesHandler {
 	return &GamesHandler{
-		queries:    q,
-		bggBaseURL: bggBaseURL,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		queries:     q,
+		bggBaseURL:  bggBaseURL,
+		bggAPIToken: bggAPIToken,
+		httpClient:  &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -38,14 +42,16 @@ type bggSearchResp struct {
 }
 
 type bggItem struct {
-	ID        int           `xml:"id,attr"`
-	Name      []bggName     `xml:"name"`
-	YearPub   bggYear       `xml:"yearpublished"`
-	MinPlayer bggIntValue   `xml:"minplayers"`
-	MaxPlayer bggIntValue   `xml:"maxplayers"`
-	PlayTime  bggIntValue   `xml:"playingtime"`
-	Image     string        `xml:"image"`
-	Stats     bggStats      `xml:"statistics>ratings"`
+	ID          int         `xml:"id,attr"`
+	Name        []bggName   `xml:"name"`
+	YearPub     bggYear     `xml:"yearpublished"`
+	MinPlayer   bggIntValue `xml:"minplayers"`
+	MaxPlayer   bggIntValue `xml:"maxplayers"`
+	PlayTime    bggIntValue `xml:"playingtime"`
+	Image       string      `xml:"image"`
+	Description string      `xml:"description"`
+	Links       []bggLink   `xml:"link"`
+	Stats       bggStats    `xml:"statistics>ratings"`
 }
 
 type bggName struct {
@@ -53,10 +59,24 @@ type bggName struct {
 	Value string `xml:"value,attr"`
 }
 
-type bggYear     struct{ Value int `xml:"value,attr"` }
-type bggIntValue struct{ Value int `xml:"value,attr"` }
-type bggStats    struct{ Average bggFloat `xml:"average"` }
-type bggFloat    struct{ Value float64 `xml:"value,attr"` }
+type bggLink struct {
+	Type  string `xml:"type,attr"`
+	Value string `xml:"value,attr"`
+}
+
+type bggYear struct {
+	Value int `xml:"value,attr"`
+}
+type bggIntValue struct {
+	Value int `xml:"value,attr"`
+}
+type bggStats struct {
+	Average       bggFloat `xml:"average"`
+	AverageWeight bggFloat `xml:"averageweight"`
+}
+type bggFloat struct {
+	Value float64 `xml:"value,attr"`
+}
 
 // SearchGames godoc
 // GET /games/search?q=catan
@@ -67,42 +87,48 @@ func (h *GamesHandler) SearchGames(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	searchURL := fmt.Sprintf("%s/search?query=%s&type=boardgame", h.bggBaseURL, url.QueryEscape(q))
-	resp, err := h.httpClient.Get(searchURL)
-	if err != nil {
-		respond.Error(w, http.StatusBadGateway, "failed to reach BGG API")
-		return
-	}
-	defer resp.Body.Close()
-
-	var searchResult bggSearchResp
-	if err := xml.NewDecoder(resp.Body).Decode(&searchResult); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "failed to parse BGG response")
-		return
-	}
-
 	type searchHit struct {
 		BGGID   int    `json:"bgg_id"`
 		Title   string `json:"title"`
 		YearPub int    `json:"year_published"`
 	}
 
-	hits := make([]searchHit, 0, len(searchResult.Items))
-	for _, item := range searchResult.Items {
-		title := ""
-		for _, n := range item.Name {
-			if n.Type == "primary" {
-				title = n.Value
-				break
+	searchURL := fmt.Sprintf("%s/search?query=%s&type=boardgame", h.bggBaseURL, url.QueryEscape(q))
+	resp, err := h.bggGet(searchURL)
+	if err == nil && resp.StatusCode == http.StatusOK {
+		defer resp.Body.Close()
+		var searchResult bggSearchResp
+		if err := xml.NewDecoder(resp.Body).Decode(&searchResult); err == nil {
+			hits := make([]searchHit, 0, len(searchResult.Items))
+			for _, item := range searchResult.Items {
+				title := ""
+				for _, n := range item.Name {
+					if n.Type == "primary" {
+						title = n.Value
+						break
+					}
+				}
+				hits = append(hits, searchHit{BGGID: item.ID, Title: title, YearPub: item.YearPub.Value})
 			}
+			respond.JSON(w, http.StatusOK, hits)
+			return
 		}
-		hits = append(hits, searchHit{
-			BGGID:   item.ID,
-			Title:   title,
-			YearPub: item.YearPub.Value,
-		})
+		resp.Body.Close()
+	} else if resp != nil {
+		resp.Body.Close()
 	}
 
+	// BGG unavailable — fall back to local game cache
+	slog.Warn("BGG search unavailable, falling back to local search", "query", q)
+	games, err := h.queries.SearchLocalGames(r.Context(), pgtype.Text{String: q, Valid: true})
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "search unavailable")
+		return
+	}
+	hits := make([]searchHit, 0, len(games))
+	for _, g := range games {
+		hits = append(hits, searchHit{BGGID: int(g.BggID), Title: g.Title})
+	}
 	respond.JSON(w, http.StatusOK, hits)
 }
 
@@ -118,6 +144,24 @@ func (h *GamesHandler) GetMyCollection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond.JSON(w, http.StatusOK, games)
+}
+
+// RemoveFromCollection godoc
+// DELETE /me/collection/:gameID
+func (h *GamesHandler) RemoveFromCollection(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	gameID, ok := parseUUID(w, chi.URLParam(r, "gameID"))
+	if !ok {
+		return
+	}
+	if err := h.queries.RemoveFromCollection(r.Context(), db.RemoveFromCollectionParams{
+		UserID: mustParseUUID(claims.UserID),
+		GameID: gameID,
+	}); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to remove game")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type addToCollectionRequest struct {
@@ -136,11 +180,11 @@ func (h *GamesHandler) AddToCollection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch and cache game from BGG if not already stored
-	game, err := h.queries.GetGameByBGGID(r.Context(), int32(req.BGGID))
+	// Always re-fetch from BGG to ensure image URLs and stats are fresh
+	game, err := h.fetchAndCacheGame(r, req.BGGID)
 	if err != nil {
-		// Not cached — fetch from BGG and upsert
-		game, err = h.fetchAndCacheGame(r, req.BGGID)
+		// BGG unavailable — fall back to cached version if it exists
+		game, err = h.queries.GetGameByBGGID(r.Context(), int32(req.BGGID))
 		if err != nil {
 			respond.Error(w, http.StatusBadGateway, "failed to fetch game from BGG")
 			return
@@ -156,11 +200,21 @@ func (h *GamesHandler) AddToCollection(w http.ResponseWriter, r *http.Request) {
 		UserID: mustParseUUID(claims.UserID),
 		GameID: game.ID,
 		Status: status,
+		Played: status == db.GameStatusPlayed,
 	})
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "failed to add game to collection")
 		return
 	}
+
+	// Best-effort activity write
+	_ = h.queries.InsertActivity(r.Context(), db.InsertActivityParams{
+		UserID:  mustParseUUID(claims.UserID),
+		Type:    db.ActivityTypeGameAdded,
+		GameID:  game.ID,
+		ListID:  pgtype.UUID{},
+		GroupID: pgtype.UUID{},
+	})
 
 	respond.JSON(w, http.StatusCreated, entry)
 }
@@ -188,9 +242,9 @@ func (h *GamesHandler) UpdateCollectionEntry(w http.ResponseWriter, r *http.Requ
 		status = db.NullGameStatus{GameStatus: db.GameStatus(*req.Status), Valid: true}
 	}
 
-	var rating db.NullInt4
+	var rating pgtype.Int4
 	if req.UserRating != nil {
-		rating = db.NullInt4{Int32: *req.UserRating, Valid: true}
+		rating = pgtype.Int4{Int32: *req.UserRating, Valid: true}
 	}
 
 	entry, err := h.queries.UpdateCollectionEntry(r.Context(), db.UpdateCollectionEntryParams{
@@ -204,13 +258,37 @@ func (h *GamesHandler) UpdateCollectionEntry(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Best-effort activity write when status changes to for_trade
+	if req.Status != nil && *req.Status == string(db.GameStatusForTrade) {
+		_ = h.queries.InsertActivity(r.Context(), db.InsertActivityParams{
+			UserID:  mustParseUUID(claims.UserID),
+			Type:    db.ActivityTypeGameForTrade,
+			GameID:  gameID,
+			ListID:  pgtype.UUID{},
+			GroupID: pgtype.UUID{},
+		})
+	}
+
 	respond.JSON(w, http.StatusOK, entry)
+}
+
+// bggGet makes an authenticated GET request to the BGG API using the API token.
+func (h *GamesHandler) bggGet(targetURL string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "table-knight/1.0")
+	if h.bggAPIToken != "" {
+		req.Header.Set("Authorization", "Bearer "+h.bggAPIToken)
+	}
+	return h.httpClient.Do(req)
 }
 
 // fetchAndCacheGame fetches a single game's details from BGG and upserts it.
 func (h *GamesHandler) fetchAndCacheGame(r *http.Request, bggID int) (db.Game, error) {
 	fetchURL := fmt.Sprintf("%s/thing?id=%d&stats=1", h.bggBaseURL, bggID)
-	resp, err := h.httpClient.Get(fetchURL)
+	resp, err := h.bggGet(fetchURL)
 	if err != nil {
 		return db.Game{}, err
 	}
@@ -232,13 +310,84 @@ func (h *GamesHandler) fetchAndCacheGame(r *http.Request, bggID int) (db.Game, e
 		}
 	}
 
+	categories := make([]string, 0)
+	for _, l := range item.Links {
+		if l.Type == "boardgamecategory" {
+			categories = append(categories, l.Value)
+		}
+	}
+
+	var weight pgtype.Numeric
+	if item.Stats.AverageWeight.Value > 0 {
+		weight.Scan(fmt.Sprintf("%.4f", item.Stats.AverageWeight.Value))
+	}
+
+	var rating pgtype.Numeric
+	if item.Stats.Average.Value > 0 {
+		rating.Scan(fmt.Sprintf("%.4f", item.Stats.Average.Value))
+	}
+
 	return h.queries.UpsertGame(r.Context(), db.UpsertGameParams{
 		BggID:        int32(item.ID),
 		Title:        title,
 		MinPlayers:   int32(item.MinPlayer.Value),
 		MaxPlayers:   int32(item.MaxPlayer.Value),
-		PlaytimeMins: db.NullInt4{Int32: int32(item.PlayTime.Value), Valid: item.PlayTime.Value > 0},
-		ImageUrl:     db.NullString{String: item.Image, Valid: item.Image != ""},
+		PlaytimeMins: pgtype.Int4{Int32: int32(item.PlayTime.Value), Valid: item.PlayTime.Value > 0},
+		ImageUrl:     pgtype.Text{String: item.Image, Valid: item.Image != ""},
+		Categories:   categories,
+		Weight:       weight,
+		BggRating:    rating,
+		Description:  pgtype.Text{String: item.Description, Valid: item.Description != ""},
+	})
+}
+
+// GetGameDetail godoc
+// GET /games/:bggId
+func (h *GamesHandler) GetGameDetail(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+
+	bggID, err := strconv.Atoi(chi.URLParam(r, "bggId"))
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid bgg_id")
+		return
+	}
+
+	game, err := h.fetchAndCacheGame(r, bggID)
+	if err != nil {
+		game, err = h.queries.GetGameByBGGID(r.Context(), int32(bggID))
+		if err != nil {
+			respond.Error(w, http.StatusNotFound, "game not found")
+			return
+		}
+	}
+
+	sessions, err := h.queries.GetUserSessionsForGame(r.Context(), db.GetUserSessionsForGameParams{
+		BggID:  int32(bggID),
+		UserID: mustParseUUID(claims.UserID),
+	})
+	if err != nil {
+		sessions = nil
+	}
+
+	reviewStats, err := h.queries.GetGameReviewStats(r.Context(), game.ID)
+	if err != nil {
+		reviewStats = nil
+	}
+
+	userReview, err := h.queries.GetUserReview(r.Context(), db.GetUserReviewParams{
+		UserID: mustParseUUID(claims.UserID),
+		GameID: game.ID,
+	})
+	var userReviewPtr any
+	if err == nil {
+		userReviewPtr = userReview
+	}
+
+	respond.JSON(w, http.StatusOK, map[string]any{
+		"game":        game,
+		"sessions":    sessions,
+		"review_stats": reviewStats,
+		"user_review": userReviewPtr,
 	})
 }
 

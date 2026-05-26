@@ -34,6 +34,12 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Brand palette
+        plum:  { DEFAULT: "#c97cb0", deep: "#5e2750" },
+        brass: "#e8a96b",
+        win:   "#62c98a",
+        loss:  "#d77270",
+        draw:  "#9aaecb",
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -41,7 +47,8 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        sans: ["Inter", "sans-serif"],
+        sans:  ["Inter", "system-ui", "sans-serif"],
+        serif: ["Fraunces", "Georgia", "serif"],
       },
     },
   },

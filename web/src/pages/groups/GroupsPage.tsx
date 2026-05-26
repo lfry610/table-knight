@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
-import { Plus, Copy, Check, Users, Library, ArrowLeft } from "lucide-react";
+import { Plus, Copy, Check, ArrowLeft } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Card, CardContent, CardHeader, CardTitle, Avatar, AvatarFallback, AvatarImage, Badge, Separator } from "@/components/ui/primitives";
+import { Input, Card, CardContent, Avatar, AvatarFallback, AvatarImage, Badge } from "@/components/ui/primitives";
 import { groupsApi, type Group } from "@/lib/api";
 
 // ── Groups list page ──────────────────────────────────────────────────────────

@@ -1,47 +1,47 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 224 71.4% 4.1%;
-    --card: 0 0% 100%;
-    --card-foreground: 224 71.4% 4.1%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 262.1 83.3% 57.8%;
-    --primary: 262.1 83.3% 57.8%;
-    --primary-foreground: 210 20% 98%;
-    --secondary: 220 14.3% 95.9%;
-    --secondary-foreground: 220.9 39.3% 11%;
-    --muted: 220 14.3% 95.9%;
-    --muted-foreground: 220 8.9% 46.1%;
-    --accent: 220 14.3% 95.9%;
-    --accent-foreground: 220.9 39.3% 11%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 20% 98%;
-    --radius: 0.5rem;
-  }
+    /* Dark warm palette — games-cafe, not corporate dashboard */
+    --background:          256 15% 9%;
+    --foreground:          28 36% 91%;
+    --card:                258 16% 12%;
+    --card-foreground:     28 36% 91%;
+    --border:              260 13% 19%;
+    --input:               260 13% 19%;
+    --ring:                320 42% 64%;
+    --primary:             320 42% 64%;
+    --primary-foreground:  256 15% 9%;
+    --secondary:           262 13% 16%;
+    --secondary-foreground: 28 36% 91%;
+    --muted:               262 13% 16%;
+    --muted-foreground:    280 9% 64%;
+    --accent:              262 13% 16%;
+    --accent-foreground:   28 36% 91%;
+    --destructive:         1 56% 64%;
+    --destructive-foreground: 28 36% 91%;
+    --radius:              0.625rem;
 
-  .dark {
-    --background: 224 71.4% 4.1%;
-    --foreground: 210 20% 98%;
-    --card: 224 71.4% 4.1%;
-    --card-foreground: 210 20% 98%;
-    --border: 215 27.9% 16.9%;
-    --input: 215 27.9% 16.9%;
-    --ring: 263.4 70% 50.4%;
-    --primary: 263.4 70% 50.4%;
-    --primary-foreground: 210 20% 98%;
-    --secondary: 215 27.9% 16.9%;
-    --secondary-foreground: 210 20% 98%;
-    --muted: 215 27.9% 16.9%;
-    --muted-foreground: 217.9 10.6% 64.9%;
-    --accent: 215 27.9% 16.9%;
-    --accent-foreground: 210 20% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 20% 98%;
+    /* Brand tokens — used in inline styles and custom classes */
+    --rd-bg:           #15131a;
+    --rd-surface:      #1e1b25;
+    --rd-surface-hi:   #28242f;
+    --rd-border:       #2e2a36;
+    --rd-text:         #f0e7df;
+    --rd-text-2:       #a59aab;
+    --rd-meta:         #6e6573;
+    --rd-plum:         #c97cb0;
+    --rd-plum-deep:    #5e2750;
+    --rd-brass:        #e8a96b;
+    --rd-cream:        #fbeed4;
+    --rd-star:         #f6c452;
+    --rd-win:          #62c98a;
+    --rd-loss:         #d77270;
+    --rd-draw:         #9aaecb;
   }
 
   * {
@@ -50,5 +50,9 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: "Inter", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.018) 1px, transparent 1px);
+    background-size: 20px 20px;
   }
 }

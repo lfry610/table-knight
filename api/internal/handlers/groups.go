@@ -6,9 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/yourusername/table-night/internal/db"
-	"github.com/yourusername/table-night/internal/middleware"
-	"github.com/yourusername/table-night/internal/respond"
+	"github.com/lfry610/table-knight/internal/db"
+	"github.com/lfry610/table-knight/internal/middleware"
+	"github.com/lfry610/table-knight/internal/respond"
 )
 
 type GroupsHandler struct {
@@ -82,6 +82,12 @@ func (h *GroupsHandler) JoinGroup(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusInternalServerError, "failed to join group")
 		return
 	}
+
+	_ = h.queries.InsertActivity(r.Context(), db.InsertActivityParams{
+		UserID:  mustParseUUID(claims.UserID),
+		Type:    db.ActivityTypeGroupJoined,
+		GroupID: group.ID,
+	})
 
 	respond.JSON(w, http.StatusOK, group)
 }

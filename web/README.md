@@ -1,6 +1,6 @@
-# table-night-web
+# table-knight-web
 
-React + Vite frontend for Table Night.
+React + Vite frontend for Table Knight.
 
 ## Stack
 
@@ -44,7 +44,6 @@ npm run dev
 ```
 
 The dev server proxies `/api/*` to your Go backend (default: `http://localhost:8080`).
-Make sure the backend is running via `docker compose up` or `make dev` in `table-night/`.
 
 ## Building for production
 
@@ -52,10 +51,3 @@ Make sure the backend is running via `docker compose up` or `make dev` in `table
 npm run build       # outputs to dist/
 npm run preview     # preview the production build locally
 ```
-
-## Deploying to Vercel
-
-1. Push to GitHub
-2. Import the repo in Vercel, set root directory to `table-night-web/`
-3. Add environment variable: `VITE_API_URL=https://api.yourdomain.com`
-4. Deploy — `vercel.json` handles SPA routing automatically

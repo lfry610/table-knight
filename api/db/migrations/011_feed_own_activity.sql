@@ -1,0 +1,3 @@
+ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'group_joined';
+
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES groups(id) ON DELETE SET NULL;

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/yourusername/table-night/internal/auth"
-	"github.com/yourusername/table-night/internal/respond"
+	"github.com/lfry610/table-knight/internal/auth"
+	"github.com/lfry610/table-knight/internal/respond"
 )
 
 type contextKey string

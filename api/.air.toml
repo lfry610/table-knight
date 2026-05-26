@@ -1,0 +1,18 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/server ./cmd/server"
+  bin = "./tmp/server"
+  full_bin = "env $(cat .env | grep -v '^#' | xargs) ./tmp/server"
+  delay = 500
+  include_ext = ["go", "sql"]
+  exclude_dir  = ["tmp", "vendor", "db/seeds"]
+  kill_delay = "500ms"
+  rerun_delay = 500
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true
