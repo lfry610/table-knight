@@ -88,7 +88,7 @@ func (h *OAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.findOrCreateUser(r.Context(), &info)
+	user, isNew, err := h.findOrCreateUser(r.Context(), &info)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "failed to sign in")
 		return
@@ -100,36 +100,42 @@ func (h *OAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, h.frontendURL+"/auth/callback?token="+jwt, http.StatusTemporaryRedirect)
+	redirectURL := h.frontendURL + "/auth/callback?token=" + jwt
+	if isNew {
+		redirectURL += "&new=1"
+	}
+	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 }
 
-func (h *OAuthHandler) findOrCreateUser(ctx context.Context, info *googleUserInfo) (db.User, error) {
+func (h *OAuthHandler) findOrCreateUser(ctx context.Context, info *googleUserInfo) (db.User, bool, error) {
 	googleID := pgtype.Text{String: info.Sub, Valid: true}
 	avatarURL := pgtype.Text{String: info.Picture, Valid: info.Picture != ""}
 
 	// 1. Found by google_id — returning user
 	user, err := h.queries.GetUserByGoogleID(ctx, googleID)
 	if err == nil {
-		return user, nil
+		return user, false, nil
 	}
 
 	// 2. Found by email — link google_id (existing email/password user signs in with Google)
 	if _, err := h.queries.GetUserByEmail(ctx, info.Email); err == nil {
-		return h.queries.LinkGoogleID(ctx, db.LinkGoogleIDParams{
+		user, err = h.queries.LinkGoogleID(ctx, db.LinkGoogleIDParams{
 			GoogleID:  googleID,
 			Email:     info.Email,
 			AvatarUrl: avatarURL,
 		})
+		return user, false, err
 	}
 
 	// 3. New user — create with a random unusable password (Google users authenticate via OAuth)
-	return h.queries.CreateGoogleUser(ctx, db.CreateGoogleUserParams{
+	user, err = h.queries.CreateGoogleUser(ctx, db.CreateGoogleUserParams{
 		Email:       info.Email,
 		DisplayName: info.Name,
 		AvatarUrl:   avatarURL,
 		GoogleID:    googleID,
 		Password:    randomHex(32),
 	})
+	return user, err == nil, err
 }
 
 func randomHex(n int) string {

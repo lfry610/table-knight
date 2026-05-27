@@ -22,10 +22,12 @@ export function OAuthCallbackPage() {
     // Store token first so the getMe request carries it
     useAuthStore.setState({ token });
 
+    const isNew = params.get("new") === "1";
+
     authApi.getMe()
       .then((res) => {
         login(token, res.data);
-        navigate("/dashboard", { replace: true });
+        navigate(isNew ? "/onboarding" : "/dashboard", { replace: true });
       })
       .catch(() => {
         useAuthStore.getState().logout();
