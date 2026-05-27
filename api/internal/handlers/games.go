@@ -125,25 +125,60 @@ func (h *GamesHandler) SearchGames(w http.ResponseWriter, r *http.Request) {
 		ch <- bggResult{hits: hits}
 	}
 
+	// Also search local cache concurrently — BGG's search omits some games
+	// (e.g. short titles like "Ra") so cached games supplement the results.
+	type localResult struct {
+		hits []searchHit
+		err  error
+	}
+	localCh := make(chan localResult, 1)
+
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 	go func() { defer wg.Done(); fetch(fmt.Sprintf("%s/search?query=%s&type=boardgame&exact=1", h.bggBaseURL, url.QueryEscape(q)), exactCh) }()
 	go func() { defer wg.Done(); fetch(fmt.Sprintf("%s/search?query=%s&type=boardgame", h.bggBaseURL, url.QueryEscape(q)), fuzzyCh) }()
+	go func() {
+		defer wg.Done()
+		games, err := h.queries.SearchLocalGames(r.Context(), pgtype.Text{String: q, Valid: true})
+		if err != nil {
+			localCh <- localResult{err: err}
+			return
+		}
+		hits := make([]searchHit, 0, len(games))
+		for _, g := range games {
+			hits = append(hits, searchHit{BGGID: int(g.BggID), Title: g.Title})
+		}
+		localCh <- localResult{hits: hits}
+	}()
 	wg.Wait()
 
 	exactRes := <-exactCh
 	fuzzyRes := <-fuzzyCh
+	localRes := <-localCh
 
-	if exactRes.err == nil || fuzzyRes.err == nil {
+	if exactRes.err == nil || fuzzyRes.err == nil || localRes.err == nil {
 		seen := make(map[int]bool)
 		merged := make([]searchHit, 0)
+
+		// Local cache first — these are games the platform knows about; rank them
+		localRanked := localRes.hits
+		rankHits(localRanked, q)
+		for _, h := range localRanked {
+			if !seen[h.BGGID] {
+				seen[h.BGGID] = true
+				merged = append(merged, h)
+			}
+		}
+
+		// Then BGG exact matches
 		for _, h := range exactRes.hits {
 			if !seen[h.BGGID] {
 				seen[h.BGGID] = true
 				merged = append(merged, h)
 			}
 		}
-		rankHits(merged, q)
+
+		// Then BGG fuzzy results ranked
 		fuzzyRanked := fuzzyRes.hits
 		rankHits(fuzzyRanked, q)
 		for _, h := range fuzzyRanked {
@@ -156,7 +191,7 @@ func (h *GamesHandler) SearchGames(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// BGG unavailable — fall back to local game cache
+	// All sources unavailable
 	slog.Warn("BGG search unavailable, falling back to local search", "query", q)
 	games, err := h.queries.SearchLocalGames(r.Context(), pgtype.Text{String: q, Valid: true})
 	if err != nil {
@@ -176,24 +211,15 @@ type searchHit struct {
 	YearPub int    `json:"year_published"`
 }
 
-// rankHits sorts results: exact match first, then starts-with, then contains,
-// with year descending as a tiebreaker within each tier.
+// rankHits sorts results: exact title match first, then everything else by
+// year descending so popular classics beat newer partial matches.
 func rankHits(hits []searchHit, q string) {
 	q = strings.ToLower(q)
-	tier := func(title string) int {
-		t := strings.ToLower(title)
-		if t == q {
-			return 0
-		}
-		if strings.HasPrefix(t, q) {
-			return 1
-		}
-		return 2
-	}
 	sort.SliceStable(hits, func(i, j int) bool {
-		ti, tj := tier(hits[i].Title), tier(hits[j].Title)
-		if ti != tj {
-			return ti < tj
+		ei := strings.ToLower(hits[i].Title) == q
+		ej := strings.ToLower(hits[j].Title) == q
+		if ei != ej {
+			return ei
 		}
 		return hits[i].YearPub > hits[j].YearPub
 	})
