@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -89,32 +90,70 @@ func (h *GamesHandler) SearchGames(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	searchURL := fmt.Sprintf("%s/search?query=%s&type=boardgame", h.bggBaseURL, url.QueryEscape(q))
-	resp, err := h.bggGet(searchURL)
-	if err == nil && resp.StatusCode == http.StatusOK {
-		defer resp.Body.Close()
-		var searchResult bggSearchResp
-		if err := xml.NewDecoder(resp.Body).Decode(&searchResult); err == nil {
-			hits := make([]searchHit, 0, len(searchResult.Items))
-			for _, item := range searchResult.Items {
-				title := ""
-				for _, n := range item.Name {
-					if n.Type == "primary" {
-						title = n.Value
-						break
-					}
-				}
-				if title != "" {
-					hits = append(hits, searchHit{BGGID: item.ID, Title: title, YearPub: item.YearPub.Value})
-				}
+	// Fire exact and fuzzy searches concurrently.
+	type bggResult struct {
+		hits []searchHit
+		err  error
+	}
+	exactCh := make(chan bggResult, 1)
+	fuzzyCh := make(chan bggResult, 1)
+
+	fetch := func(u string, ch chan<- bggResult) {
+		resp, err := h.bggGet(u)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			if resp != nil {
+				resp.Body.Close()
 			}
-			rankHits(hits, q)
-			respond.JSON(w, http.StatusOK, hits)
+			ch <- bggResult{err: err}
 			return
 		}
-		resp.Body.Close()
-	} else if resp != nil {
-		resp.Body.Close()
+		defer resp.Body.Close()
+		var sr bggSearchResp
+		if err := xml.NewDecoder(resp.Body).Decode(&sr); err != nil {
+			ch <- bggResult{err: err}
+			return
+		}
+		hits := make([]searchHit, 0, len(sr.Items))
+		for _, item := range sr.Items {
+			for _, n := range item.Name {
+				if n.Type == "primary" && n.Value != "" {
+					hits = append(hits, searchHit{BGGID: item.ID, Title: n.Value, YearPub: item.YearPub.Value})
+					break
+				}
+			}
+		}
+		ch <- bggResult{hits: hits}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); fetch(fmt.Sprintf("%s/search?query=%s&type=boardgame&exact=1", h.bggBaseURL, url.QueryEscape(q)), exactCh) }()
+	go func() { defer wg.Done(); fetch(fmt.Sprintf("%s/search?query=%s&type=boardgame", h.bggBaseURL, url.QueryEscape(q)), fuzzyCh) }()
+	wg.Wait()
+
+	exactRes := <-exactCh
+	fuzzyRes := <-fuzzyCh
+
+	if exactRes.err == nil || fuzzyRes.err == nil {
+		seen := make(map[int]bool)
+		merged := make([]searchHit, 0)
+		for _, h := range exactRes.hits {
+			if !seen[h.BGGID] {
+				seen[h.BGGID] = true
+				merged = append(merged, h)
+			}
+		}
+		rankHits(merged, q)
+		fuzzyRanked := fuzzyRes.hits
+		rankHits(fuzzyRanked, q)
+		for _, h := range fuzzyRanked {
+			if !seen[h.BGGID] {
+				seen[h.BGGID] = true
+				merged = append(merged, h)
+			}
+		}
+		respond.JSON(w, http.StatusOK, merged)
+		return
 	}
 
 	// BGG unavailable — fall back to local game cache
