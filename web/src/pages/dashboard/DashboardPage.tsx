@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useAuthStore } from "@/store/auth";
-import { gamesApi, groupsApi, sessionsApi, roundTableApi, reviewsApi, type Session, type CollectionGame } from "@/lib/api";
+import { gamesApi, groupsApi, sessionsApi, roundTableApi, reviewsApi, type Session, type BGGSearchHit } from "@/lib/api";
 import { AppLayout } from "@/components/layout/AppLayout";
 import {
   IconPlus, IconStar, IconShield, IconNotebook, IconTrophy, IconCalendar, IconD6,
@@ -90,14 +90,22 @@ function DiaryRow({ session, rating }: { session: Session; rating?: number }) {
   );
 }
 
-function RoundTableSection({ collection }: { collection: CollectionGame[] | undefined }) {
+function RoundTableSection() {
   const qc = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [editSlots, setEditSlots] = useState<number[]>([]);
+  const [gameLabels, setGameLabels] = useState<Record<number, string>>({});
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: roundTable } = useQuery({
     queryKey: ["round-table"],
     queryFn: () => roundTableApi.get().then((r) => r.data),
+  });
+
+  const { data: searchResults } = useQuery({
+    queryKey: ["bgg-search-rt", searchQuery],
+    queryFn: () => gamesApi.search(searchQuery).then((r: { data: BGGSearchHit[] }) => r.data),
+    enabled: searchQuery.trim().length >= 2,
   });
 
   const setMutation = useMutation({
@@ -109,11 +117,23 @@ function RoundTableSection({ collection }: { collection: CollectionGame[] | unde
   });
 
   const startEditing = () => {
-    setEditSlots(roundTable?.map((g) => g.bgg_id) ?? []);
+    const slots = roundTable?.map((g) => g.bgg_id) ?? [];
+    setEditSlots(slots);
+    const labels: Record<number, string> = {};
+    roundTable?.forEach((g) => { labels[g.bgg_id] = g.title; });
+    setGameLabels(labels);
+    setSearchQuery("");
     setIsEditing(true);
   };
 
-  const availableGames = collection?.filter((g) => !editSlots.includes(g.bgg_id)) ?? [];
+  const addGame = (hit: BGGSearchHit) => {
+    if (editSlots.includes(hit.bgg_id) || editSlots.length >= 5) return;
+    setEditSlots((s) => [...s, hit.bgg_id]);
+    setGameLabels((prev) => ({ ...prev, [hit.bgg_id]: hit.title }));
+    setSearchQuery("");
+  };
+
+  const availableResults = (searchResults ?? []).filter((h) => !editSlots.includes(h.bgg_id));
 
   return (
     <section className="mb-8">
@@ -186,68 +206,61 @@ function RoundTableSection({ collection }: { collection: CollectionGame[] | unde
                   Pick games from your collection below
                 </p>
               )}
-              {editSlots.map((bggId, i) => {
-                const game = collection?.find((g) => g.bgg_id === bggId);
-                return (
-                  <div
-                    key={bggId}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-medium"
-                    style={{ background: "var(--rd-surface-hi)", color: "var(--rd-text)" }}
+              {editSlots.map((bggId, i) => (
+                <div
+                  key={bggId}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-medium"
+                  style={{ background: "var(--rd-surface-hi)", color: "var(--rd-text)" }}
+                >
+                  <span className="text-[10px] font-bold" style={{ color: "var(--rd-plum)" }}>
+                    {i + 1}
+                  </span>
+                  <span className="max-w-[120px] truncate">{gameLabels[bggId] ?? `Game #${bggId}`}</span>
+                  <button
+                    onClick={() => setEditSlots(editSlots.filter((_, j) => j !== i))}
+                    className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity"
+                    style={{ color: "var(--rd-loss)" }}
                   >
-                    <span className="text-[10px] font-bold" style={{ color: "var(--rd-plum)" }}>
-                      {i + 1}
-                    </span>
-                    <span className="max-w-[120px] truncate">{game?.title ?? `Game #${bggId}`}</span>
-                    <button
-                      onClick={() => setEditSlots(editSlots.filter((_, j) => j !== i))}
-                      className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity"
-                      style={{ color: "var(--rd-loss)" }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
+                    ×
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Collection picker */}
+          {/* Game search */}
           {editSlots.length < 5 && (
             <div>
               <p className="text-[11px] font-medium mb-2" style={{ color: "var(--rd-text-2)" }}>
-                Pick from your collection
+                Search for a game
               </p>
-              <div className="max-h-52 overflow-y-auto space-y-0.5 -mx-1 px-1">
-                {availableGames.length === 0 && (
-                  <p className="text-[12px] py-2" style={{ color: "var(--rd-meta)" }}>
-                    All collection games added
-                  </p>
-                )}
-                {availableGames.map((game) => (
-                  <button
-                    key={game.id}
-                    onClick={() => setEditSlots([...editSlots, game.bgg_id])}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors hover:bg-accent"
-                  >
-                    <div
-                      className="shrink-0 overflow-hidden rounded"
-                      style={{ width: 28, height: 37, background: "var(--rd-surface-hi)" }}
+              <input
+                className="w-full rounded-lg px-3 py-2 text-[13px] outline-none mb-2"
+                style={{ background: "var(--rd-surface-hi)", border: "1px solid var(--rd-border)", color: "var(--rd-cream)" }}
+                placeholder="Search BoardGameGeek…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {availableResults.length > 0 && (
+                <div className="max-h-48 overflow-y-auto space-y-0.5 -mx-1 px-1">
+                  {availableResults.slice(0, 8).map((hit) => (
+                    <button
+                      key={hit.bgg_id}
+                      onClick={() => addGame(hit)}
+                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors hover:bg-accent"
                     >
-                      {game.image_url ? (
-                        <img src={game.image_url} alt={game.title} className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="h-full flex items-center justify-center text-xs">🎲</div>
+                      <span className="text-[13px] font-medium flex-1 line-clamp-1" style={{ color: "var(--rd-text)" }}>
+                        {hit.title}
+                      </span>
+                      {hit.year_published > 0 && (
+                        <span className="text-[11px] shrink-0" style={{ color: "var(--rd-meta)" }}>
+                          {hit.year_published}
+                        </span>
                       )}
-                    </div>
-                    <span
-                      className="text-[13px] font-medium flex-1 line-clamp-1"
-                      style={{ color: "var(--rd-text)" }}
-                    >
-                      {game.title}
-                    </span>
-                  </button>
-                ))}
-              </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -489,7 +502,7 @@ export function DashboardPage() {
       {tab === "diary" && <>
 
       {/* Round Table */}
-      <RoundTableSection collection={collection} />
+      <RoundTableSection />
 
       {/* Body: diary feed + right panel */}
       <div className="grid gap-10 md:grid-cols-[1.6fr_1fr]">

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
 import { AppLayout } from "@/components/layout/AppLayout";
-import { IconStar } from "@/components/ui/icons";
-import { socialApi, authApi, type CollectionGame, type RoundTableGame, type GameStatus, type Session } from "@/lib/api";
+import { IconStar, IconPlus } from "@/components/ui/icons";
+import { socialApi, authApi, gamesApi, roundTableApi, type CollectionGame, type RoundTableGame, type GameStatus, type Session, type BGGSearchHit } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { SessionRow } from "@/pages/sessions/SessionsPage";
 import { IconPencil } from "@/components/ui/icons";
@@ -87,46 +88,175 @@ function FollowButton({ userId, isFollowing }: { userId: string; isFollowing: bo
 
 // ── Round Table ───────────────────────────────────────────────────────────────
 
-function RoundTableSection({ slots }: { slots: RoundTableGame[] }) {
+function RoundTableSection({ slots, isOwner, profileId }: { slots: RoundTableGame[]; isOwner: boolean; profileId: string }) {
+  const qc = useQueryClient();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editSlots, setEditSlots] = useState<number[]>([]);
+  const [gameLabels, setGameLabels] = useState<Record<number, string>>({});
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const { data: searchResults } = useQuery({
+    queryKey: ["bgg-search-rt-profile", searchQuery],
+    queryFn: () => gamesApi.search(searchQuery).then((r) => r.data),
+    enabled: searchQuery.trim().length >= 2,
+  });
+
+  const setMutation = useMutation({
+    mutationFn: (bggIds: number[]) => roundTableApi.set(bggIds),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["profile", profileId] });
+      setIsEditing(false);
+    },
+  });
+
+  const startEditing = () => {
+    setEditSlots(slots.map((g) => g.bgg_id));
+    const labels: Record<number, string> = {};
+    slots.forEach((g) => { labels[g.bgg_id] = g.title; });
+    setGameLabels(labels);
+    setSearchQuery("");
+    setIsEditing(true);
+  };
+
+  const addGame = (hit: BGGSearchHit) => {
+    if (editSlots.includes(hit.bgg_id) || editSlots.length >= 5) return;
+    setEditSlots((s) => [...s, hit.bgg_id]);
+    setGameLabels((prev) => ({ ...prev, [hit.bgg_id]: hit.title }));
+    setSearchQuery("");
+  };
+
+  const availableResults = (searchResults ?? []).filter((h) => !editSlots.includes(h.bgg_id));
   const filled: (RoundTableGame | null)[] = Array.from({ length: 5 }, (_, i) =>
     slots.find((s) => s.position === i + 1) ?? null
   );
+
   return (
     <section className="mb-8">
-      <h2
-        className="font-serif font-bold text-[15px] mb-3 text-center tracking-tight"
-        style={{ color: "var(--rd-cream)" }}
-      >
-        Round Table
-      </h2>
-      <div className="grid grid-cols-5 gap-2">
-        {filled.map((game, i) => (
-          <div key={i} className="flex flex-col gap-1.5">
-            <div
-              className="relative w-full overflow-hidden rounded-lg"
-              style={{
-                paddingBottom: "133.333%",
-                background: "var(--rd-surface-hi)",
-                border: "1px solid var(--rd-border)",
-              }}
-            >
-              {game?.image_url ? (
-                <Link to={`/games/${game.bgg_id}`} className="absolute inset-0">
-                  <img
-                    src={game.image_url}
-                    alt={game.title}
-                    className="h-full w-full object-cover"
-                  />
-                </Link>
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-[10px]" style={{ color: "var(--rd-meta)" }}>—</span>
+      <div className="flex items-center justify-center relative mb-3">
+        <h2
+          className="font-serif font-bold text-[15px] tracking-tight"
+          style={{ color: "var(--rd-cream)" }}
+        >
+          Round Table
+        </h2>
+        {isOwner && !isEditing && (
+          <button
+            onClick={startEditing}
+            className="absolute right-0 text-[12px] font-medium transition-colors hover:text-foreground"
+            style={{ color: "var(--rd-text-2)" }}
+          >
+            Edit
+          </button>
+        )}
+      </div>
+
+      {!isEditing && (
+        <div className="grid grid-cols-5 gap-2">
+          {filled.map((game, i) => (
+            <div key={i} className="flex flex-col gap-1.5">
+              <div
+                className="relative w-full overflow-hidden rounded-lg"
+                style={{ paddingBottom: "133.333%", background: "var(--rd-surface-hi)", border: "1px solid var(--rd-border)" }}
+              >
+                {game?.image_url ? (
+                  <Link to={`/games/${game.bgg_id}`} className="absolute inset-0">
+                    <img src={game.image_url} alt={game.title} className="h-full w-full object-cover" />
+                  </Link>
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    {isOwner ? (
+                      <button onClick={startEditing} className="opacity-30 hover:opacity-60 transition-opacity">
+                        <IconPlus size={14} style={{ color: "var(--rd-text-2)" }} />
+                      </button>
+                    ) : (
+                      <span className="text-[10px]" style={{ color: "var(--rd-meta)" }}>—</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isEditing && (
+        <div className="rounded-xl p-4 space-y-4" style={{ background: "var(--rd-surface)", border: "1px solid var(--rd-border)" }}>
+          <div>
+            <p className="text-[11px] font-medium mb-2" style={{ color: "var(--rd-text-2)" }}>
+              Seats ({editSlots.length}/5)
+            </p>
+            <div className="flex gap-2 flex-wrap min-h-[2rem]">
+              {editSlots.length === 0 && (
+                <p className="text-[12px] self-center" style={{ color: "var(--rd-meta)" }}>Search for games below</p>
+              )}
+              {editSlots.map((bggId, i) => (
+                <div
+                  key={bggId}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-medium"
+                  style={{ background: "var(--rd-surface-hi)", color: "var(--rd-text)" }}
+                >
+                  <span className="text-[10px] font-bold" style={{ color: "var(--rd-plum)" }}>{i + 1}</span>
+                  <span className="max-w-[120px] truncate">{gameLabels[bggId] ?? `Game #${bggId}`}</span>
+                  <button
+                    onClick={() => setEditSlots(editSlots.filter((_, j) => j !== i))}
+                    className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity"
+                    style={{ color: "var(--rd-loss)" }}
+                  >×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {editSlots.length < 5 && (
+            <div>
+              <p className="text-[11px] font-medium mb-2" style={{ color: "var(--rd-text-2)" }}>Search for a game</p>
+              <input
+                className="w-full rounded-lg px-3 py-2 text-[13px] outline-none mb-2"
+                style={{ background: "var(--rd-surface-hi)", border: "1px solid var(--rd-border)", color: "var(--rd-cream)" }}
+                placeholder="Search BoardGameGeek…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {availableResults.length > 0 && (
+                <div className="max-h-48 overflow-y-auto space-y-0.5 -mx-1 px-1">
+                  {availableResults.slice(0, 8).map((hit) => (
+                    <button
+                      key={hit.bgg_id}
+                      onClick={() => addGame(hit)}
+                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors hover:bg-accent"
+                    >
+                      <span className="text-[13px] font-medium flex-1 line-clamp-1" style={{ color: "var(--rd-text)" }}>
+                        {hit.title}
+                      </span>
+                      {hit.year_published > 0 && (
+                        <span className="text-[11px] shrink-0" style={{ color: "var(--rd-meta)" }}>{hit.year_published}</span>
+                      )}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => setMutation.mutate(editSlots)}
+              disabled={setMutation.isPending}
+              className="inline-flex h-8 px-4 items-center rounded-lg text-[13px] font-semibold disabled:opacity-50 transition-opacity hover:opacity-90"
+              style={{ background: "var(--rd-plum)", color: "var(--rd-bg)" }}
+            >
+              Save
+            </button>
+            <button
+              onClick={() => setIsEditing(false)}
+              className="inline-flex h-8 px-4 items-center rounded-lg text-[13px] font-medium border transition-colors hover:bg-accent"
+              style={{ borderColor: "var(--rd-border)", color: "var(--rd-text-2)" }}
+            >
+              Cancel
+            </button>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -554,7 +684,7 @@ export function ProfilePage() {
             </div>
           </div>
 
-          <RoundTableSection slots={data.round_table} />
+          <RoundTableSection slots={data.round_table} isOwner={data.is_own_profile} profileId={id!} />
           <RecentSessionsSection
             sessions={data.recent_sessions ?? []}
             editable={data.is_own_profile}
