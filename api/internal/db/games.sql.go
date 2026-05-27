@@ -63,6 +63,17 @@ func (q *Queries) AddToCollectionIfAbsent(ctx context.Context, arg AddToCollecti
 	return err
 }
 
+const countGames = `-- name: CountGames :one
+SELECT COUNT(*) FROM games
+`
+
+func (q *Queries) CountGames(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countGames)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getGameByBGGID = `-- name: GetGameByBGGID :one
 SELECT id, bgg_id, title, min_players, max_players, playtime_mins, weight, image_url, categories, bgg_rating, cached_at, description FROM games WHERE bgg_id = $1
 `

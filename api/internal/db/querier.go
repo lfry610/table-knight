@@ -17,6 +17,7 @@ type Querier interface {
 	AddSessionPlayer(ctx context.Context, arg AddSessionPlayerParams) (SessionPlayer, error)
 	AddToCollectionIfAbsent(ctx context.Context, arg AddToCollectionIfAbsentParams) error
 	ClearRoundTable(ctx context.Context, userID pgtype.UUID) error
+	CountGames(ctx context.Context) (int64, error)
 	CreateGoogleUser(ctx context.Context, arg CreateGoogleUserParams) (User, error)
 	// db/queries/groups.sql
 	CreateGroup(ctx context.Context, arg CreateGroupParams) (Group, error)

@@ -16,6 +16,9 @@ ON CONFLICT (bgg_id) DO UPDATE SET
     cached_at     = NOW()
 RETURNING *;
 
+-- name: CountGames :one
+SELECT COUNT(*) FROM games;
+
 -- name: GetGameByBGGID :one
 SELECT * FROM games WHERE bgg_id = $1;
 

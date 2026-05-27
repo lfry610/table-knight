@@ -72,6 +72,9 @@ func main() {
 	reviewsHandler := handlers.NewReviewsHandler(queries)
 	oauthHandler := handlers.NewOAuthHandler(queries, authSvc, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL, cfg.FrontendURL)
 
+	// Seed the local game cache with the BGG top-1000 in the background
+	go gamesHandler.SeedPopularGames(ctx)
+
 	// ── Router ────────────────────────────────────────────────────────────────
 	r := chi.NewRouter()
 
