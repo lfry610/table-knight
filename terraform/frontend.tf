@@ -73,8 +73,12 @@ resource "aws_cloudfront_distribution" "frontend" {
     }
   }
 
+  aliases = ["thetableknight.com"]
+
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = "arn:aws:acm:us-east-1:120569614970:certificate/f588fd0b-0489-41de-9dcb-08fda918cc20"
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 
   tags = {

@@ -134,6 +134,46 @@ func (q *Queries) GetFollowerCount(ctx context.Context, followingID pgtype.UUID)
 	return count, err
 }
 
+const getFollowers = `-- name: GetFollowers :many
+SELECT u.id, u.display_name, u.avatar_url, f.created_at AS followed_at
+FROM follows f
+JOIN users u ON u.id = f.follower_id
+WHERE f.following_id = $1
+ORDER BY f.created_at DESC
+`
+
+type GetFollowersRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	DisplayName string             `json:"display_name"`
+	AvatarUrl   pgtype.Text        `json:"avatar_url"`
+	FollowedAt  pgtype.Timestamptz `json:"followed_at"`
+}
+
+func (q *Queries) GetFollowers(ctx context.Context, followingID pgtype.UUID) ([]GetFollowersRow, error) {
+	rows, err := q.db.Query(ctx, getFollowers, followingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetFollowersRow{}
+	for rows.Next() {
+		var i GetFollowersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayName,
+			&i.AvatarUrl,
+			&i.FollowedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getFollowing = `-- name: GetFollowing :many
 SELECT u.id, u.display_name, u.avatar_url, f.created_at AS followed_at
 FROM follows f

@@ -5,7 +5,8 @@ import { Plus, Copy, Check, ArrowLeft } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input, Card, CardContent, Avatar, AvatarFallback, AvatarImage, Badge } from "@/components/ui/primitives";
-import { groupsApi, type Group } from "@/lib/api";
+import { groupsApi, type Group, type Session } from "@/lib/api";
+import { SessionRow } from "@/pages/sessions/SessionsPage";
 
 // ── Groups list page ──────────────────────────────────────────────────────────
 export function GroupsPage() {
@@ -309,41 +310,38 @@ export function GroupDetailPage() {
         {activeTab === "sessions" && (
           <div className="space-y-3">
             <div className="flex justify-between items-center">
-              <p className="text-sm text-muted-foreground">{sessions?.length ?? 0} sessions logged</p>
+              <p className="text-[12px]" style={{ color: "var(--rd-meta)" }}>
+                {sessions?.length ?? 0} sessions logged
+              </p>
               <Link to={`/sessions/log?group=${id}`}>
-                <Button size="sm">
-                  <Plus className="mr-2 h-4 w-4" />
+                <button
+                  className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-[13px] font-semibold transition-opacity hover:opacity-90"
+                  style={{ background: "var(--rd-plum)", color: "var(--rd-bg)" }}
+                >
+                  <Plus size={13} />
                   Log session
-                </Button>
+                </button>
               </Link>
             </div>
             {sessions?.length === 0 ? (
-              <div className="flex flex-col items-center py-16 text-center">
-                <span className="mb-3 text-4xl">🎮</span>
-                <p className="font-medium">No sessions yet</p>
-                <p className="text-sm text-muted-foreground">Log your first game night</p>
+              <div
+                className="flex flex-col items-center py-14 text-center rounded-xl border border-dashed"
+                style={{ borderColor: "var(--rd-border)" }}
+              >
+                <p className="font-medium text-sm" style={{ color: "var(--rd-text-2)" }}>No sessions yet</p>
+                <p className="text-[12px] mt-1" style={{ color: "var(--rd-meta)" }}>Log your first game night</p>
               </div>
             ) : (
-              sessions?.map((session) => (
-                <Card key={session.id}>
-                  <CardContent className="flex items-center gap-4 p-4">
-                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-muted">
-                      {session.game_image ? (
-                        <img src={session.game_image} alt={session.game_title} className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-xl">🎲</div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">{session.game_title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {new Date(session.played_at).toLocaleDateString()}
-                        {session.duration_mins && ` · ${session.duration_mins} min`}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
+              <div className="flex flex-col gap-3">
+                {(sessions as Session[])?.map((session) => (
+                  <SessionRow
+                    key={session.id}
+                    session={session}
+                    editable={false}
+                    onSaveSuccess={() => {}}
+                  />
+                ))}
+              </div>
             )}
           </div>
         )}

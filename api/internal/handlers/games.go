@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -19,10 +21,10 @@ import (
 )
 
 type GamesHandler struct {
-	queries      *db.Queries
-	bggBaseURL   string
-	bggAPIToken  string
-	httpClient   *http.Client
+	queries     *db.Queries
+	bggBaseURL  string
+	bggAPIToken string
+	httpClient  *http.Client
 }
 
 func NewGamesHandler(q *db.Queries, bggBaseURL, bggAPIToken string) *GamesHandler {
@@ -87,12 +89,6 @@ func (h *GamesHandler) SearchGames(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type searchHit struct {
-		BGGID   int    `json:"bgg_id"`
-		Title   string `json:"title"`
-		YearPub int    `json:"year_published"`
-	}
-
 	searchURL := fmt.Sprintf("%s/search?query=%s&type=boardgame", h.bggBaseURL, url.QueryEscape(q))
 	resp, err := h.bggGet(searchURL)
 	if err == nil && resp.StatusCode == http.StatusOK {
@@ -108,8 +104,11 @@ func (h *GamesHandler) SearchGames(w http.ResponseWriter, r *http.Request) {
 						break
 					}
 				}
-				hits = append(hits, searchHit{BGGID: item.ID, Title: title, YearPub: item.YearPub.Value})
+				if title != "" {
+					hits = append(hits, searchHit{BGGID: item.ID, Title: title, YearPub: item.YearPub.Value})
+				}
 			}
+			rankHits(hits, q)
 			respond.JSON(w, http.StatusOK, hits)
 			return
 		}
@@ -130,6 +129,35 @@ func (h *GamesHandler) SearchGames(w http.ResponseWriter, r *http.Request) {
 		hits = append(hits, searchHit{BGGID: int(g.BggID), Title: g.Title})
 	}
 	respond.JSON(w, http.StatusOK, hits)
+}
+
+type searchHit struct {
+	BGGID   int    `json:"bgg_id"`
+	Title   string `json:"title"`
+	YearPub int    `json:"year_published"`
+}
+
+// rankHits sorts results: exact match first, then starts-with, then contains,
+// with year descending as a tiebreaker within each tier.
+func rankHits(hits []searchHit, q string) {
+	q = strings.ToLower(q)
+	tier := func(title string) int {
+		t := strings.ToLower(title)
+		if t == q {
+			return 0
+		}
+		if strings.HasPrefix(t, q) {
+			return 1
+		}
+		return 2
+	}
+	sort.SliceStable(hits, func(i, j int) bool {
+		ti, tj := tier(hits[i].Title), tier(hits[j].Title)
+		if ti != tj {
+			return ti < tj
+		}
+		return hits[i].YearPub > hits[j].YearPub
+	})
 }
 
 // ── Collection ────────────────────────────────────────────────────────────────

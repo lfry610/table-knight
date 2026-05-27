@@ -114,6 +114,17 @@ func (h *SocialHandler) GetFollowing(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, following)
 }
 
+// GET /me/followers
+func (h *SocialHandler) GetFollowers(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	followers, err := h.queries.GetFollowers(r.Context(), mustParseUUID(claims.UserID))
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to fetch followers")
+		return
+	}
+	respond.JSON(w, http.StatusOK, followers)
+}
+
 // GET /me/group-mates
 func (h *SocialHandler) GetGroupMates(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFromContext(r.Context())

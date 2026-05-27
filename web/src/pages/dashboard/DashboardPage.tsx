@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useAuthStore } from "@/store/auth";
-import { gamesApi, groupsApi, sessionsApi, roundTableApi, reviewsApi, type Session, type BGGSearchHit } from "@/lib/api";
+import { gamesApi, groupsApi, sessionsApi, roundTableApi, reviewsApi, socialApi, type Session, type BGGSearchHit, type FollowingUser, type UserSearchResult } from "@/lib/api";
 import { AppLayout } from "@/components/layout/AppLayout";
 import {
   IconPlus, IconStar, IconShield, IconNotebook, IconTrophy, IconCalendar, IconD6,
@@ -413,8 +413,142 @@ function StatsTab() {
   );
 }
 
+function UserRow({ user, isFollowing }: { user: FollowingUser | UserSearchResult; isFollowing: boolean }) {
+  const qc = useQueryClient();
+  const follow = useMutation({
+    mutationFn: () => socialApi.follow(user.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["following"] });
+      qc.invalidateQueries({ queryKey: ["followers"] });
+      qc.invalidateQueries({ queryKey: ["connections-search"] });
+    },
+  });
+  const unfollow = useMutation({
+    mutationFn: () => socialApi.unfollow(user.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["following"] });
+      qc.invalidateQueries({ queryKey: ["followers"] });
+      qc.invalidateQueries({ queryKey: ["connections-search"] });
+    },
+  });
+  const pending = follow.isPending || unfollow.isPending;
+
+  return (
+    <div className="flex items-center gap-3">
+      <Link to={`/users/${user.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-bold overflow-hidden"
+          style={{ background: "rgba(201,124,176,.2)", color: "var(--rd-plum)" }}
+        >
+          {user.avatar_url ? (
+            <img src={user.avatar_url} className="h-full w-full object-cover" alt={user.display_name} />
+          ) : (
+            user.display_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+          )}
+        </div>
+        <span className="text-[13px] font-medium truncate" style={{ color: "var(--rd-text)" }}>
+          {user.display_name}
+        </span>
+      </Link>
+      <button
+        onClick={() => isFollowing ? unfollow.mutate() : follow.mutate()}
+        disabled={pending}
+        className="shrink-0 text-[12px] font-semibold px-3 py-1 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-40"
+        style={isFollowing
+          ? { border: "1px solid var(--rd-border)", color: "var(--rd-text-2)" }
+          : { background: "var(--rd-plum)", color: "var(--rd-bg)" }
+        }
+      >
+        {isFollowing ? "Following" : "+ Follow"}
+      </button>
+    </div>
+  );
+}
+
+function ConnectionsTab() {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const { data: following } = useQuery({
+    queryKey: ["following"],
+    queryFn: () => socialApi.getFollowing().then((r) => r.data),
+  });
+
+  const { data: followers } = useQuery({
+    queryKey: ["followers"],
+    queryFn: () => socialApi.getFollowers().then((r) => r.data),
+  });
+
+  const { data: searchResults } = useQuery({
+    queryKey: ["connections-search", searchQuery],
+    queryFn: () => socialApi.searchUsers(searchQuery).then((r) => r.data),
+    enabled: searchQuery.trim().length >= 2,
+  });
+
+  const followingIds = new Set((following ?? []).map((u) => u.id));
+
+  return (
+    <div className="space-y-8">
+      {/* Search */}
+      <div>
+        <p className="text-[11px] uppercase tracking-wide font-medium mb-2" style={{ color: "var(--rd-meta)" }}>
+          Find people
+        </p>
+        <input
+          className="w-full rounded-lg px-3 py-2 text-[13px] outline-none"
+          style={{ background: "var(--rd-surface)", border: "1px solid var(--rd-border)", color: "var(--rd-cream)" }}
+          placeholder="Search by name…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        {searchResults && searchResults.length > 0 && (
+          <div className="mt-2 space-y-3">
+            {searchResults.map((u) => (
+              <UserRow key={u.id} user={u} isFollowing={u.is_following} />
+            ))}
+          </div>
+        )}
+        {searchQuery.trim().length >= 2 && searchResults?.length === 0 && (
+          <p className="mt-2 text-[12px]" style={{ color: "var(--rd-meta)" }}>No users found</p>
+        )}
+      </div>
+
+      {/* Following */}
+      <div>
+        <p className="text-[11px] uppercase tracking-wide font-medium mb-3" style={{ color: "var(--rd-meta)" }}>
+          Following · {following?.length ?? 0}
+        </p>
+        {following?.length === 0 ? (
+          <p className="text-[12px]" style={{ color: "var(--rd-meta)" }}>You're not following anyone yet</p>
+        ) : (
+          <div className="space-y-3">
+            {following?.map((u) => (
+              <UserRow key={u.id} user={u} isFollowing={true} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Followers */}
+      <div>
+        <p className="text-[11px] uppercase tracking-wide font-medium mb-3" style={{ color: "var(--rd-meta)" }}>
+          Followers · {followers?.length ?? 0}
+        </p>
+        {followers?.length === 0 ? (
+          <p className="text-[12px]" style={{ color: "var(--rd-meta)" }}>No followers yet</p>
+        ) : (
+          <div className="space-y-3">
+            {followers?.map((u) => (
+              <UserRow key={u.id} user={u} isFollowing={followingIds.has(u.id)} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function DashboardPage() {
-  const [tab, setTab] = useState<"diary" | "stats">("diary");
+  const [tab, setTab] = useState<"diary" | "stats" | "connections">("diary");
   const user = useAuthStore((s) => s.user);
   const firstName = user?.display_name.split(" ")[0] ?? "";
 
@@ -440,7 +574,8 @@ export function DashboardPage() {
 
   const reviewByGameId = Object.fromEntries((reviews ?? []).map((r) => [r.game_id, r.rating]));
   const recentSessions = sessions?.slice(0, 5) ?? [];
-  const shelfGames = collection?.filter((g) => g.status === "owned").slice(0, 8) ?? [];
+  const ownedGames = collection?.filter((g) => g.status === "owned") ?? [];
+  const shelfGames = [...ownedGames].sort(() => Math.random() - 0.5).slice(0, 8);
 
   return (
     <AppLayout>
@@ -479,7 +614,7 @@ export function DashboardPage() {
         className="flex gap-6 mb-6"
         style={{ borderBottom: "1px solid var(--rd-border)" }}
       >
-        {(["diary", "stats"] as const).map((t) => (
+        {(["diary", "stats", "connections"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -490,13 +625,16 @@ export function DashboardPage() {
                 : { color: "var(--rd-text-2)", borderBottom: "2px solid transparent" }
             }
           >
-            {t === "diary" ? "Diary" : "Stats"}
+            {t === "diary" ? "Diary" : t === "stats" ? "Stats" : "Connections"}
           </button>
         ))}
       </div>
 
       {/* Stats tab */}
       {tab === "stats" && <StatsTab />}
+
+      {/* Connections tab */}
+      {tab === "connections" && <ConnectionsTab />}
 
       {/* Diary tab */}
       {tab === "diary" && <>
@@ -579,22 +717,23 @@ export function DashboardPage() {
                   className="text-[12px] transition-colors hover:text-foreground"
                   style={{ color: "var(--rd-text-2)" }}
                 >
-                  {shelfGames.length} games
+                  {ownedGames.length} games
                 </Link>
               </div>
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {shelfGames.map((g) => (
-                  <div
+                  <Link
                     key={g.id}
-                    className="overflow-hidden rounded"
-                    style={{ aspectRatio: "3/4", background: "var(--rd-surface-hi)" }}
+                    to={`/games/${g.bgg_id}`}
+                    className="overflow-hidden rounded transition-opacity hover:opacity-80"
+                    style={{ aspectRatio: "3/4", background: "var(--rd-surface-hi)", display: "block" }}
                   >
                     {g.image_url ? (
                       <img src={g.image_url} alt={g.title} className="h-full w-full object-cover" />
                     ) : (
                       <div className="flex h-full items-center justify-center text-lg">🎲</div>
                     )}
-                  </div>
+                  </Link>
                 ))}
               </div>
             </section>

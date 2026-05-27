@@ -69,6 +69,13 @@ WHERE a.user_id = $1
 ORDER BY a.created_at DESC
 LIMIT $2 OFFSET $3;
 
+-- name: GetFollowers :many
+SELECT u.id, u.display_name, u.avatar_url, f.created_at AS followed_at
+FROM follows f
+JOIN users u ON u.id = f.follower_id
+WHERE f.following_id = $1
+ORDER BY f.created_at DESC;
+
 -- name: GetFollowerCount :one
 SELECT COUNT(*) FROM follows WHERE following_id = $1;
 

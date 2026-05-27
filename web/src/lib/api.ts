@@ -123,6 +123,8 @@ export const socialApi = {
     api.get<FeedItem[]>("/me/feed", { params }),
   getFollowing: () =>
     api.get<FollowingUser[]>("/me/following"),
+  getFollowers: () =>
+    api.get<FollowingUser[]>("/me/followers"),
   getGroupMates: () =>
     api.get<GroupMate[]>("/me/group-mates"),
   searchUsers: (q: string) =>

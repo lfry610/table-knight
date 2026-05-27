@@ -33,6 +33,7 @@ type Querier interface {
 	FollowUser(ctx context.Context, arg FollowUserParams) error
 	GetFeed(ctx context.Context, arg GetFeedParams) ([]GetFeedRow, error)
 	GetFollowerCount(ctx context.Context, followingID pgtype.UUID) (int64, error)
+	GetFollowers(ctx context.Context, followingID pgtype.UUID) ([]GetFollowersRow, error)
 	GetFollowing(ctx context.Context, followerID pgtype.UUID) ([]GetFollowingRow, error)
 	GetFollowingCount(ctx context.Context, followerID pgtype.UUID) (int64, error)
 	GetGameByBGGID(ctx context.Context, bggID int32) (Game, error)

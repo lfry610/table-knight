@@ -128,6 +128,7 @@ func main() {
 		r.Put("/me/round-table", roundTableHandler.SetRoundTable)
 		r.Get("/me/feed", socialHandler.GetFeed)
 		r.Get("/me/following", socialHandler.GetFollowing)
+			r.Get("/me/followers", socialHandler.GetFollowers)
 		r.Get("/me/group-mates", socialHandler.GetGroupMates)
 
 		// Users

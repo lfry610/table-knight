@@ -308,8 +308,9 @@ function complexityLabel(weight: number): string {
 function CollectionPosterCard({ game }: { game: CollectionGame }) {
   return (
     <div className="flex flex-col gap-2">
+      <Link to={`/games/${game.bgg_id}`} className="block">
       <div
-        className="relative w-full overflow-hidden rounded-lg"
+        className="relative w-full overflow-hidden rounded-lg transition-opacity hover:opacity-80"
         style={{ paddingBottom: "133.333%", background: "var(--rd-surface-hi)" }}
       >
         {game.image_url ? (
@@ -333,6 +334,7 @@ function CollectionPosterCard({ game }: { game: CollectionGame }) {
           {STATUS_LABELS[game.status]}
         </div>
       </div>
+      </Link>
 
       {/* Title */}
       <p className="font-serif font-semibold text-[12px] leading-tight line-clamp-2" style={{ color: "var(--rd-text)" }}>

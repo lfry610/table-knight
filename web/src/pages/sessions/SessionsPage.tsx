@@ -30,6 +30,7 @@ const RESULTS: { value: SessionResult; label: string; emoji: string }[] = [
 
 export function LogSessionPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [searchParams] = useSearchParams();
   const currentUser = useAuthStore((s) => s.user);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(searchParams.get("group"));
@@ -112,6 +113,9 @@ export function LogSessionPage() {
         })),
       }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sessions"] });
+      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      qc.invalidateQueries({ queryKey: ["feed"] });
       navigate("/sessions");
     },
   });
