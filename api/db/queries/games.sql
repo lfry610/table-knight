@@ -23,7 +23,12 @@ SELECT COUNT(*) FROM games;
 SELECT * FROM games WHERE bgg_id = $1;
 
 -- name: SearchLocalGames :many
-SELECT * FROM games WHERE title ILIKE '%' || $1 || '%' ORDER BY title LIMIT 10;
+SELECT * FROM games
+WHERE title ILIKE '%' || $1 || '%'
+ORDER BY
+  (lower(title) = lower($1))::int DESC,
+  title
+LIMIT 20;
 
 -- name: GetGameByID :one
 SELECT * FROM games WHERE id = $1;

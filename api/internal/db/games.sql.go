@@ -374,7 +374,12 @@ func (q *Queries) RemoveFromCollection(ctx context.Context, arg RemoveFromCollec
 }
 
 const searchLocalGames = `-- name: SearchLocalGames :many
-SELECT id, bgg_id, title, min_players, max_players, playtime_mins, weight, image_url, categories, bgg_rating, cached_at, description FROM games WHERE title ILIKE '%' || $1 || '%' ORDER BY title LIMIT 10
+SELECT id, bgg_id, title, min_players, max_players, playtime_mins, weight, image_url, categories, bgg_rating, cached_at, description FROM games
+WHERE title ILIKE '%' || $1 || '%'
+ORDER BY
+  (lower(title) = lower($1))::int DESC,
+  title
+LIMIT 20
 `
 
 func (q *Queries) SearchLocalGames(ctx context.Context, dollar_1 pgtype.Text) ([]Game, error) {
