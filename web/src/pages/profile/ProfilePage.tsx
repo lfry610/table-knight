@@ -155,7 +155,7 @@ function RoundTableSection({ slots, isOwner, profileId }: { slots: RoundTableGam
           {filled.map((game, i) => (
             <div key={i} className="flex flex-col gap-1.5">
               <div
-                className="relative w-full overflow-hidden rounded-lg"
+                className="relative w-full overflow-hidden rounded-lg transition-shadow duration-200 hover:shadow-[0_0_0_2px_#c97cb0,0_0_12px_rgba(201,124,176,0.3)]"
                 style={{ paddingBottom: "133.333%", background: "var(--rd-surface-hi)", border: "1px solid var(--rd-border)" }}
               >
                 {game?.image_url ? (
@@ -310,7 +310,7 @@ function CollectionPosterCard({ game }: { game: CollectionGame }) {
     <div className="flex flex-col gap-2">
       <Link to={`/games/${game.bgg_id}`} className="block">
       <div
-        className="relative w-full overflow-hidden rounded-lg transition-opacity hover:opacity-80"
+        className="relative w-full overflow-hidden rounded-lg transition-shadow duration-200 hover:shadow-[0_0_0_2px_#c97cb0,0_0_12px_rgba(201,124,176,0.3)]"
         style={{ paddingBottom: "133.333%", background: "var(--rd-surface-hi)" }}
       >
         {game.image_url ? (

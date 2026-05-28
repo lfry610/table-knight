@@ -82,7 +82,7 @@ function NewListForm({ onDone }: { onDone: (id: string) => void }) {
             {games.map((game, i) => (
               <div key={game.id} className="flex flex-col gap-1">
                 <div
-                  className="relative w-full overflow-hidden rounded-lg"
+                  className="relative w-full overflow-hidden rounded-lg transition-shadow duration-200 hover:shadow-[0_0_0_2px_#c97cb0,0_0_12px_rgba(201,124,176,0.3)]"
                   style={{ paddingBottom: "133.333%", background: "var(--rd-surface-hi)", border: "1px solid var(--rd-border)" }}
                 >
                   <div className="absolute inset-0">
@@ -264,7 +264,7 @@ function GamePosterCard({
     >
       <div className="relative group">
         <div
-          className="relative w-full overflow-hidden rounded-lg"
+          className="relative w-full overflow-hidden rounded-lg transition-shadow duration-200 hover:shadow-[0_0_0_2px_#c97cb0,0_0_12px_rgba(201,124,176,0.3)]"
           style={{ paddingBottom: "133.333%", background: "var(--rd-surface-hi)", border: "1px solid var(--rd-border)" }}
         >
           <div className="absolute inset-0">

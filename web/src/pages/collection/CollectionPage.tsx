@@ -317,7 +317,7 @@ function PosterCard({ game, reviewRating }: { game: CollectionGame; reviewRating
   return (
     <div className="group flex flex-col gap-2">
       <div
-        className="relative w-full overflow-hidden rounded-lg"
+        className="relative w-full overflow-hidden rounded-lg transition-shadow duration-200 hover:shadow-[0_0_0_2px_#c97cb0,0_0_12px_rgba(201,124,176,0.3)]"
         style={{ paddingBottom: "133.333%", background: "var(--rd-surface-hi)" }}
       >
         <Link to={`/games/${game.bgg_id}`} className="absolute inset-0">
