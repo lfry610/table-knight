@@ -164,7 +164,7 @@ function RoundTableSection() {
             return (
               <div
                 key={pos}
-                className="relative w-full overflow-hidden rounded-lg"
+                className={`relative w-full overflow-hidden rounded-lg transition-shadow duration-200${game ? " hover:shadow-[0_0_0_2px_#c97cb0,0_0_12px_rgba(201,124,176,0.3)]" : ""}`}
                 style={{ paddingBottom: "133.333%", background: "var(--rd-surface-hi)" }}
               >
                 {game?.image_url ? (
@@ -725,7 +725,7 @@ export function DashboardPage() {
                   <Link
                     key={g.id}
                     to={`/games/${g.bgg_id}`}
-                    className="overflow-hidden rounded transition-opacity hover:opacity-80"
+                    className="overflow-hidden rounded transition-shadow duration-200 hover:shadow-[0_0_0_2px_#c97cb0,0_0_12px_rgba(201,124,176,0.3)]"
                     style={{ aspectRatio: "3/4", background: "var(--rd-surface-hi)", display: "block" }}
                   >
                     {g.image_url ? (
