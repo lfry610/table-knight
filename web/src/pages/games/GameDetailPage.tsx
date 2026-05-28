@@ -239,7 +239,12 @@ export function GameDetailPage() {
                   className="text-[13px] leading-relaxed"
                   style={{ color: "var(--rd-text-2)" }}
                   dangerouslySetInnerHTML={{
-                    __html: data.game.description.replace(/&#10;/g, "<br/>"),
+                    __html: data.game.description
+                      .replace(/&/g, "&amp;")
+                      .replace(/</g, "&lt;")
+                      .replace(/>/g, "&gt;")
+                      .replace(/"/g, "&quot;")
+                      .replace(/&#10;/g, "<br/>"),
                   }}
                 />
               </section>

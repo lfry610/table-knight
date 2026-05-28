@@ -243,10 +243,23 @@ func (h *SessionsHandler) DeleteSession(w http.ResponseWriter, r *http.Request) 
 // UpdateSessionPlayers godoc
 // PATCH /sessions/:id/players
 func (h *SessionsHandler) UpdateSessionPlayers(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
 	sessionID, ok := parseUUID(w, chi.URLParam(r, "id"))
 	if !ok {
 		return
 	}
+
+	// Verify the caller owns this session
+	session, err := h.queries.GetSessionByID(r.Context(), sessionID)
+	if err != nil {
+		respond.Error(w, http.StatusNotFound, "session not found")
+		return
+	}
+	if session.LoggedBy != mustParseUUID(claims.UserID) {
+		respond.Error(w, http.StatusForbidden, "not your session")
+		return
+	}
+
 	var players []struct {
 		UserID string `json:"user_id"`
 		Result string `json:"result"`

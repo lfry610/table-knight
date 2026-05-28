@@ -286,6 +286,22 @@ func (q *Queries) GetGroupSessions(ctx context.Context, arg GetGroupSessionsPara
 	return items, nil
 }
 
+const getSessionByID = `-- name: GetSessionByID :one
+SELECT id, logged_by FROM sessions WHERE id = $1
+`
+
+type GetSessionByIDRow struct {
+	ID       pgtype.UUID `json:"id"`
+	LoggedBy pgtype.UUID `json:"logged_by"`
+}
+
+func (q *Queries) GetSessionByID(ctx context.Context, id pgtype.UUID) (GetSessionByIDRow, error) {
+	row := q.db.QueryRow(ctx, getSessionByID, id)
+	var i GetSessionByIDRow
+	err := row.Scan(&i.ID, &i.LoggedBy)
+	return i, err
+}
+
 const getSessionPlayers = `-- name: GetSessionPlayers :many
 SELECT
     u.id,

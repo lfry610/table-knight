@@ -86,6 +86,9 @@ WHERE s.group_id = $1
 ORDER BY s.played_at DESC
 LIMIT $2 OFFSET $3;
 
+-- name: GetSessionByID :one
+SELECT id, logged_by FROM sessions WHERE id = $1;
+
 -- name: UpdateSession :exec
 UPDATE sessions SET played_at = $2 WHERE id = $1 AND logged_by = $3;
 

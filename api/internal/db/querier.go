@@ -53,6 +53,7 @@ type Querier interface {
 	GetReviewableGames(ctx context.Context, userID pgtype.UUID) ([]GetReviewableGamesRow, error)
 	// db/queries/round_table.sql
 	GetRoundTable(ctx context.Context, userID pgtype.UUID) ([]GetRoundTableRow, error)
+	GetSessionByID(ctx context.Context, id pgtype.UUID) (GetSessionByIDRow, error)
 	GetSessionPlayers(ctx context.Context, sessionID pgtype.UUID) ([]GetSessionPlayersRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByGoogleID(ctx context.Context, googleID pgtype.Text) (User, error)
